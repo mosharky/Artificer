@@ -1,0 +1,88 @@
+name: workshop-publish
+
+# Publishes the plugin as a Steam Workshop mod when a release is published:
+# release.yml creates a draft release with the zips, and publishing that draft
+# on GitHub starts this workflow. The mod gets exactly the plugin zip of that
+# release, checked against its build attestation, so the Workshop and GitHub
+# serve the same build. The release notes become the Workshop change note.
+#
+# Opt-in: it runs only when the repository variable WORKSHOP_PUBLISH is `true`
+# (Settings → Secrets and variables → Actions → Variables). Anvil loads plugins
+# from Workshop mods from version 1.3 on. It also needs remote_file_id in
+# workshop/descriptor.mod (`pdx-ws init`), the `steam-workshop` environment and
+# the secrets STEAM_USERNAME and STEAM_SESSION, in the environment or shared as
+# organization secrets; see the README, "Publish to the Steam Workshop".
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  publish:
+    # The template itself is not released; repositories created from it opt in.
+    if: github.repository != 'happy-dwarf-team/anvil-plugin-template' && vars.WORKSHOP_PUBLISH == 'true'
+    runs-on: ubuntu-24.04
+    environment: steam-workshop
+    concurrency:
+      group: steam-workshop
+      cancel-in-progress: false
+    permissions:
+      attestations: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      # The release event checks out the release's tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download and verify the plugin zip
+        env:
+          PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          version=${TAG#v}
+          id=$(sed -n 's/^[[:space:]]*id[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' plugin.toml | head -n 1)
+          [ -n "$id" ] || { echo "::error file=plugin.toml::id not found"; exit 1; }
+          # pdx-ws takes the version (and the item ID) from the descriptor.
+          descriptor=$(sed -n 's/^version="\([^"]*\)".*/\1/p' workshop/descriptor.mod)
+          [ "$descriptor" = "$version" ] || {
+            echo "::error file=workshop/descriptor.mod::version is '$descriptor', but the release is $TAG"
+            exit 1
+          }
+
+          zip="$id-$version.zip"
+          dir="$RUNNER_TEMP/release"
+          gh release download "$TAG" --pattern "$zip" --pattern SHA256SUMS.txt --dir "$dir"
+          if [ "$PRIVATE" = true ]; then
+            # release.yml attests public repositories only.
+            echo "::warning::private repository: $zip has no build attestation; only its line in SHA256SUMS.txt is checked"
+            (cd "$dir" && awk -v f="$zip" '$2 == f' SHA256SUMS.txt | sha256sum -c -)
+          else
+            gh attestation verify "$dir/$zip" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
+            echo "$zip: attestation verified"
+          fi
+
+          # The zip holds the folder <id>/, which becomes workshop/anvil/<id>/.
+          rm -rf workshop/anvil
+          mkdir -p workshop/anvil
+          unzip -q "$dir/$zip" -d workshop/anvil
+          [ -f "workshop/anvil/$id/plugin.toml" ] || { echo "::error::$zip holds no $id/plugin.toml"; exit 1; }
+          find workshop -type f | sort
+
+      - uses: happy-dwarf-team/paradox-workshop-publish@v0.2.1
+        id: workshop
+        with:
+          steam-username: ${{ secrets.STEAM_USERNAME }}
+          steam-session: ${{ secrets.STEAM_SESSION }}
+          change-note: ${{ github.event.release.body }}
+
+      - name: Link the Workshop item
+        env:
+          ITEM_URL: ${{ steps.workshop.outputs.item-url }}
+        run: echo "Published to $ITEM_URL"

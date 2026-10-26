@@ -1,0 +1,20 @@
+# Publishing the plugin as a Steam Workshop mod with paradox-workshop-publish
+# (https://github.com/happy-dwarf-team/paradox-workshop-publish).
+#
+# The mod is workshop/: descriptor.mod, thumbnail.png and anvil/<id>/, the
+# built plugin, which CI copies there (it is not in Git). The Workshop item ID
+# is remote_file_id in workshop/descriptor.mod, written once by `pdx-ws init`.
+# Without `visibility`, publishing never changes it on Steam.
+schema = 1
+
+[[mod]]
+game = "eu4"
+path = "workshop"
+# The Workshop description: every publish replaces it with this file. Write it
+# by the team's convention:
+# https://github.com/happy-dwarf-team/.github/blob/main/docs/workshop-pages.md
+description = "workshop/description.md"
+exclude = ["description.md"]
+# A mod of only descriptor.mod and anvil/ keeps the EU4 checksum, so players
+# keep ironman achievements. A change that would break that fails the plan.
+checksum = "keep"

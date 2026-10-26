@@ -1,0 +1,18 @@
+# Every game address the plugin uses, declared once. `anvil gen` turns it into
+# symbols.gen.h and symbols.gen.hpp; Anvil verifies it against eu4.exe before
+# loading the DLL and skips the plugin on any other build. After a change, run
+# the my_plugin-check target with EU4_EXE set and commit symbols.lock.
+build = "eu4-1.37.5-steam-win64"
+
+[symbol.speed_object]
+rva = 0x8024D0
+bytes = "48 8B 81 18 04 00 00 C3"      # mov rax, [rcx+0x418]; ret
+memory = "code"
+signature = "void* (void* session)"
+note = "session vtable slot 0x100: returns the game-speed object"
+
+[symbol.idle_exit]
+rva = 0x815CAE
+bytes = "48 8D 8D 40 02 00 00"         # lea rcx, [rbp+0x240]
+memory = "code"
+note = "CInGameIdler::Idle, start of the block that returns to the menu"

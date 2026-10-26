@@ -1,0 +1,14 @@
+id = "my-plugin"
+name = "My plugin"
+version = "0.0.0"         # release-please sets it in each release pull request
+authors = ["Your Name"]
+description = "Logs the first game-speed object and each return to the main menu."
+api = 2
+entry = "my_plugin.dll"
+phase = "main"
+symbols = "symbols.toml"   # the game build comes from here
+settings = "settings.toml"
+# Required: true if the plugin can change the simulation's state or results.
+affects_gameplay = false
+issues = "https://github.com/happy-dwarf-team/anvil-plugin-template/issues"
+repository = "https://github.com/happy-dwarf-team/anvil-plugin-template"

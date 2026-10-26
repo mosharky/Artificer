@@ -1,0 +1,103 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Called by release.yml to build the assets of a new release.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      # CI has no eu4.exe, so `anvil check` checks what it can without the game:
+      # the schemas of plugin.toml, symbols.toml and settings.toml, and that
+      # symbols.lock matches symbols.toml with result = "ok" (the lock check).
+      # Problems show up as annotations on the files.
+      - name: anvil check
+        shell: pwsh
+        run: |
+          # anvil.exe of the SDK archive that CMakeLists.txt fetches.
+          $anvil = 'build/_deps/anvil_sdk-src/bin/anvil.exe'
+          if (-not (Test-Path $anvil)) { Write-Output "::error::$anvil not found"; exit 1 }
+          & $anvil --version
+          & $anvil check . --format github
+          exit $LASTEXITCODE
+
+      # The release assets, built on every change so a release never packages
+      # something CI has not seen:
+      #   <id>-<version>.zip           the plugin folder, for <EU4>/anvil/plugins/
+      #   <id>-<version>-workshop.zip  a mod folder (descriptor.mod + anvil/<id>/)
+      #                                for Documents/Paradox Interactive/Europa Universalis IV/mod/
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $manifest = Get-Content plugin.toml -Raw
+          $id = [regex]::Match($manifest, '(?m)^\s*id\s*=\s*"([^"]+)"').Groups[1].Value
+          $version = [regex]::Match($manifest, '(?m)^\s*version\s*=\s*"([^"]+)"').Groups[1].Value
+          if (-not $id -or -not $version) { Write-Output '::error file=plugin.toml::id or version not found'; exit 1 }
+          $plugin = "build/plugin/$id"
+          if (-not (Test-Path "$plugin/plugin.toml")) { Write-Output "::error::$plugin was not built"; exit 1 }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          New-Item -ItemType Directory dist -Force | Out-Null
+          [IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $plugin), "$PWD/dist/$id-$version.zip",
+              [IO.Compression.CompressionLevel]::Optimal, $true)
+
+          $stage = "build/workshop"
+          Remove-Item $stage -Recurse -Force -ErrorAction Ignore
+          New-Item -ItemType Directory "$stage/$id/anvil" -Force | Out-Null
+          Copy-Item $plugin "$stage/$id/anvil/$id" -Recurse
+          # The version line also drops release-please's marker comment.
+          $descriptor = (Get-Content workshop/descriptor.mod) -replace '^version="[^"]*".*$', "version=`"$version`""
+          Set-Content "$stage/$id/descriptor.mod" $descriptor -Encoding utf8
+          Set-Content "$stage/$id.mod" ($descriptor + "path=`"mod/$id`"") -Encoding utf8
+          [IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $stage), "$PWD/dist/$id-$version-workshop.zip",
+              [IO.Compression.CompressionLevel]::Optimal, $false)
+
+          foreach ($zip in Get-ChildItem dist/*.zip) {
+              Write-Output "${zip}:"
+              [IO.Compression.ZipFile]::OpenRead($zip).Entries | ForEach-Object { "  $($_.FullName)" }
+          }
+          "id=$id" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plugin-${{ github.sha }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+      # The Steam Workshop mod of workshop.toml is workshop/ with the built plugin
+      # in anvil/<id>/, which is not in Git. A dry run of paradox-workshop-publish
+      # writes to the job summary what a release would publish (files, descriptor,
+      # change note) and fails when the mod would change the EU4 checksum
+      # (checksum = "keep"). It needs no secrets and sends nothing to Steam.
+      - name: Stage the Workshop mod
+        shell: pwsh
+        env:
+          PLUGIN_ID: ${{ steps.package.outputs.id }}
+        run: |
+          Remove-Item workshop/anvil -Recurse -Force -ErrorAction Ignore
+          New-Item -ItemType Directory workshop/anvil -Force | Out-Null
+          Copy-Item "build/plugin/$env:PLUGIN_ID" "workshop/anvil/$env:PLUGIN_ID" -Recurse
+
+      # Pinned to a release tag, not a commit: the action installs the pdx-ws
+      # release named by its own tag and verifies that release's attestation.
+      - name: Workshop preview
+        uses: happy-dwarf-team/paradox-workshop-publish@v0.2.1
+        with:
+          dry-run: true

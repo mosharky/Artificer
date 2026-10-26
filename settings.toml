@@ -1,0 +1,9 @@
+# What the player can change. `anvil gen` turns it into settings.gen.hpp
+# (cfg::log_menu_returns); Anvil keeps the player's values that differ from
+# these defaults in anvil/data/<id>/settings.toml.
+[setting.log_menu_returns]
+type = "bool"
+default = true
+label = "Log each return to the menu"
+description = "Writes a line to anvil.log whenever the game returns to the main menu."
+restart = false               # applies at once: the plugin reads it on every return
