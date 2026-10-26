@@ -38,7 +38,7 @@ Anvil asks again after every update. Until you approve, the version you trusted 
 ![](https://i.imgur.com/Uf8Z21n.png)
 
 ### Alternative download
-[GitHub](https://github.com/OWNER/REPO)
+[GitHub](https://github.com/mosharky/Artificer)
 
 ![](https://i.imgur.com/Uf8Z21n.png)
 
