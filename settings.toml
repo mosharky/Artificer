@@ -1,9 +1,9 @@
 # What the player can change. `anvil gen` turns it into settings.gen.hpp
-# (cfg::log_menu_returns); Anvil keeps the player's values that differ from
-# these defaults in anvil/data/<id>/settings.toml.
-[setting.log_menu_returns]
+# (cfg::<name>); Anvil keeps the player's values that differ from these
+# defaults in anvil/data/<id>/settings.toml.
+[setting.clean_closed_popups]
 type = "bool"
 default = true
-label = "Log each return to the menu"
-description = "Writes a line to anvil.log whenever the game returns to the main menu."
-restart = false               # applies at once: the plugin reads it on every return
+label = "Delete closed message pop-ups"
+description = "EU4 keeps every message pop-up you close, hidden, until you restart the game; the pile slows down every frame. This deletes them a few seconds after they close."
+restart = false               # applies at once: read on every check

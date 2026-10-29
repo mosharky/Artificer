@@ -14,7 +14,7 @@ FetchContent_MakeAvailable(anvil_sdk)
 # Reads plugin.toml, runs `anvil gen` on symbols.toml and settings.toml, builds
 # the DLL and lays out build/plugin/<id>/. Adds artificer-check and, with
 # -DEU4_DIR=<game folder>, artificer-deploy.
-anvil_add_plugin(artificer SOURCES src/plugin.cpp)
+anvil_add_plugin(artificer SOURCES src/plugin.cpp src/popup_cleanup.cpp)
 
 # For the IDE: copy the plugin into the game after every build, so a build
 # (or F5) needs no separate artificer-deploy. Close the game first: Windows
