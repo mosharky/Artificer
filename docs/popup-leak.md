@@ -61,3 +61,25 @@ The tools that produced these figures are in `tools/perf`: `session_log.py`,
 
 In a 5-year test from 1654, the fix deleted 200 closed pop-ups. The 19 hidden pop-ups
 left were exactly the 19 the message log keeps, none of them finished.
+
+## Measured with the fix
+
+The same run as above, repeated with the fix and with Bellows 0.14.0 loaded on both
+sides: 2.3 hours of play from 1654 to 1819, then an in-process reload of the 1819 save,
+against a fresh restart on it.
+
+| | After 2.3 h and an in-process reload | Fresh restart |
+| --- | --- | --- |
+| Hidden `DefaultPopup` windows | 4 | 0 |
+| Main thread per frame, paused | 1.48 ms | 2.37 ms |
+| Cost per game day (sampled) | 137 ms | 132 ms |
+| Private memory | 6.6 GB | 5.7 GB |
+
+- During the session, the hidden pop-ups stayed between 4 and 12, and the paused cost
+  between 1.8 and 3.5 ms per frame, with no upward trend. Without the fix, those
+  figures were 4 637 pop-ups and 4.95 ms.
+- The gap per game day fell from 26 % to 4 %. On the main thread, the job wait
+  `0x179E90` grew by 4.7 ms per day after the long session, against 20 ms without
+  the fix. The GUI passes (`0x14E9FA0`, `0x14E9E46`, `0x15931AC`) no longer grow at all.
+- Private memory still grows by about 1 GB over the session, mostly in 16 MB heap
+  segments (171 against 112). This growth does not show up as a cost per day.
