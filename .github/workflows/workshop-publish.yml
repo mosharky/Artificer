@@ -75,7 +75,7 @@ jobs:
           [ -f "workshop/anvil/$id/plugin.toml" ] || { echo "::error::$zip holds no $id/plugin.toml"; exit 1; }
           find workshop -type f | sort
 
-      - uses: happy-dwarf-team/paradox-workshop-publish@v0.2.1
+      - uses: happy-dwarf-team/paradox-workshop-publish@v0.2.2
         id: workshop
         with:
           steam-username: ${{ secrets.STEAM_USERNAME }}
