@@ -2,7 +2,7 @@ id = "artificer"
 name = "Artificer"
 version = "0.0.0"         # release-please sets it in each release pull request
 authors = ["mo_shark"]
-description = "Logs the first game-speed object and each return to the main menu."
+description = "Keeps EU4 fast in long sessions: deletes the message pop-ups the game keeps after you close them."
 api = 2
 entry = "artificer.dll"
 phase = "main"
@@ -12,3 +12,8 @@ settings = "settings.toml"
 affects_gameplay = false
 issues = "https://github.com/mosharky/Artificer/issues"
 repository = "https://github.com/mosharky/Artificer"
+
+# The frame event, on the game's main thread (anvil_game.h).
+[[dependencies]]
+id = "anvil-game"
+version = "^1"

@@ -2,17 +2,117 @@
 # symbols.gen.h and symbols.gen.hpp; Anvil verifies it against eu4.exe before
 # loading the DLL and skips the plugin on any other build. After a change, run
 # the artificer-check target with EU4_EXE set and commit symbols.lock.
+#
+# Offsets the plugin uses are read from the instructions below (`values`), so
+# Anvil's byte check covers them too. Background: docs/popup-leak.md.
 build = "eu4-1.37.5-steam-win64"
 
-[symbol.speed_object]
-rva = 0x8024D0
-bytes = "48 8B 81 18 04 00 00 C3"      # mov rax, [rcx+0x418]; ret
-memory = "code"
-signature = "void* (void* session)"
-note = "session vtable slot 0x100: returns the game-speed object"
+# --- The session and its pop-up list (the same instructions Tongs reads) ---
 
-[symbol.idle_exit]
-rva = 0x815CAE
-bytes = "48 8D 8D 40 02 00 00"         # lea rcx, [rbp+0x240]
+[symbol.root_and_date]
+rva = 0x14321FC
+bytes = "48 8B 05 75 DC F0 00 8B 98 D0 1D 00 00"
 memory = "code"
-note = "CInGameIdler::Idle, start of the block that returns to the menu"
+values.root = { at = 3, rip_relative = 7 }
+note = "top bar: the game root object (global); its date at root+0x1DD0"
+
+[symbol.session_of_root]
+rva = 0x848976
+bytes = "48 8B 05 FB 74 AF 01 48 8B D9 48 8B 88 00 1E 00 00 48 8B 01 FF 90 00 01 00 00"
+memory = "code"
+values.session = { at = 13, size = 4 }
+note = "pause command: the session at root+0x1E00"
+
+[symbol.popup_list_append]
+rva = 0x6ECB39
+bytes = "48 8B 9E 80 00 00 00 B9 20 00 00 00 E8 8A 67 34 01 48 89 38 48 89 58 08 48 C7 40 10 00 00 00 00 C6 40 18 00"
+memory = "code"
+values.tail = { at = 3, size = 4 }
+values.node_next = { at = 27, size = 1 }
+note = "appends a pop-up (rdi) to the session's open pop-ups: {head, tail at session+0x80}, nodes {popup, prev, next +0x10, removed +0x18}"
+
+# --- Message pop-ups (DefaultPopup): the controller class the game never deletes once closed ---
+
+[symbol.popup_constructed]
+rva = 0x8C1FD5
+bytes = "4C 89 B6 B8 01 00 00 48 8D 8E C0 01 00 00"
+memory = "code"
+note = "message pop-up controller constructor (0x8C1F80, called only by the pop-up factory 0x8C1430), right after it stores the class's vtable at [rsi]; mid hook here"
+
+[symbol.popup_close]
+rva = 0x10A08C0
+bytes = "C6 81 14 01 00 00 01 C3"
+memory = "code"
+values.closed = { at = 2, size = 4 }
+note = "pop-up controller slot 5: marks it finished (+0x114); the controllers the message log keeps for reopening stay unmarked"
+
+[symbol.popup_delete]
+rva = 0x8C22A0
+bytes = "48 89 5C 24 08 57 48 83 EC 20 8B DA 48 8B F9 E8 EC 9D 00 00 F6 C3 01 74 0D BA B0 05 00 00"
+memory = "code"
+signature = "void* (void* popup, uint32_t flags)"
+note = "message pop-up controller, vtable slot 0: the destructor (0x8CC0A0), then frees its 0x5B0 bytes when flags & 1"
+
+[symbol.popup_destructor]
+rva = 0x8CC0A0
+bytes = "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 40 48 8B D9 48 8D 05 3F 5D 3F 01"
+memory = "code"
+signature = "void (void* popup)"
+values.vtable = { at = 21, rip_relative = 25 }
+note = "message pop-up controller destructor: sets the class's vtable, releases right_3d_view, then the base destructor; every delete passes here"
+
+[symbol.popup_base_destructor]
+rva = 0x10A05F0
+bytes = "48 89 5C 24 10 57 48 83 EC 20 48 8B D9 48 8D 05 CC 6D CB 00 48 89 01 48 8B 49 10 48 8B 01 FF 90 00 01 00 00 48 85 C0 74 12 48 89 5C 24 30 48 8D 54 24 30 48 8B C8 E8 65 9A 10 FF 48 8B 4B 08 48 85 C9 74 09 48 8B 01 FF 90 30 01 00 00"
+memory = "code"
+values.session = { at = 26, size = 1 }
+values.window = { at = 62, size = 1 }
+values.destroy_slot = { at = 73, size = 4 }
+note = "pop-up base destructor: unregisters from the session's game speed (popup+0x10), then destroys its window (popup+0x8, full object) through slot 0x130"
+
+# --- Message log: its entries hold pop-up controllers to show later ---
+
+[symbol.message_log_append]
+rva = 0x82413A
+bytes = "48 8B BB B8 04 00 00 B9 20 00 00 00 E8 89 F1 20 01 48 89 30 48 C7 40 08 00 00 00 00 48 89 78 10 C6 40 18 00 8B 93 C8 04 00 00 48 89 83 B8 04 00 00 8D 4A 01 89 8B C8 04 00 00 85 D2 74 06 48 89 47 08 EB 07 48 89 83 C0 04 00 00"
+memory = "code"
+values.head = { at = 71, size = 4 }
+values.node_next = { at = 65, size = 1 }
+note = "session vtable slot 0x2E8 (0x824110): appends an entry (rsi) to the message log, {tail +0x4B8, head +0x4C0, count +0x4C8}, nodes {entry, next +0x8, prev +0x10}"
+
+[symbol.message_log_entry]
+rva = 0x123F8B2
+bytes = "48 8D 05 6F BC B2 00 48 89 06"
+memory = "code"
+values.vtable = { at = 3, rip_relative = 7 }
+note = "message log entry constructor (in 0x123F800): stores the entry's vtable (0x1D6B528); entries are 0x1D8 bytes"
+
+[symbol.message_log_dismiss]
+rva = 0x1240020
+bytes = "40 53 48 83 EC 20 48 8B D9 48 8B 89 30 01 00 00 48 85 C9 74 06 48 8B 01 FF 50 58 C6 83 D0 01 00 00 01"
+memory = "code"
+values.popup = { at = 12, size = 4 }
+note = "message log entry: marks its pop-up controller (+0x130) finished through slot 0x58 (0x838B20) and keeps the pointer; showing it (0x123FFB0) clears the pointer instead"
+
+# --- Widgets ---
+
+[symbol.window_destroy_thunk]
+rva = 0x1547910
+bytes = "48 8B 41 D0 48 83 C1 D0 48 FF A0 30 01 00 00"
+memory = "code"
+values.full_object = { at = 3, size = 1 }
+note = "window widget slot 0x78 (Destroy): moves to the full object (widget - 0x30) and jumps to its slot 0x130"
+
+[symbol.widget_dead]
+rva = 0x1554510
+bytes = "40 53 48 83 EC 20 C6 81 C4 00 00 00 01"
+memory = "code"
+values.dead = { at = 8, size = 4 }
+note = "a widget's Destroy marks it dead (+0xC4); the GUI manager's sweep (0x14E9FA0) then deletes it"
+
+[symbol.widget_visible]
+rva = 0x10A1E30
+bytes = "40 57 48 83 EC 30 C6 81 C5 00 00 00 01"
+memory = "code"
+values.visible = { at = 8, size = 4 }
+note = "dialog show: sets the widget's visible byte (+0xC5)"

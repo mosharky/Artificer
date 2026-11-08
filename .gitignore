@@ -4,3 +4,5 @@
 /.vs/
 CMakeUserPresets.json
 /workshop/anvil/
+/tools/perf/runs/
+__pycache__/
