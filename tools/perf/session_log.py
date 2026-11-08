@@ -217,6 +217,8 @@ CLOSE_BUTTONS = ["close_button", "CloseButton", "AgreeButton", "CenterOK"]
 
 def close_covering(game, covered_by, depth=5):
     """Closes the window named in a click's `covered_by` (and whatever covers that); True if it did."""
+    if not covered_by:
+        return False  # Tongs did not say what covers the click
     window = covered_by.split("/")[0]
     if window.startswith("EventWindow"):
         return False  # events are chosen, not closed
@@ -233,7 +235,7 @@ def close_covering(game, covered_by, depth=5):
             if close_covering(game, answer["covered_by"], depth - 1):
                 return True
         # Its button under the menu bar at the screen's bottom edge: drag the window up first.
-        if (not answer.get("covered_by", "").startswith("EventWindow")
+        if (not (answer.get("covered_by") or "").startswith("EventWindow")
                 and drag_window_up(game, window) and game.call(f"ui click {match['path']}").get("ok")):
             time.sleep(0.1)
             return True
@@ -258,11 +260,11 @@ def close_popups(game, limit=2000):
         if answer.get("ok"):
             time.sleep(0.05)
             continue
-        if answer.get("error") == "covered" and close_covering(game, answer.get("covered_by", "")):
+        if answer.get("error") == "covered" and close_covering(game, (answer.get("covered_by") or "")):
             continue
         # A tall popup's OK at the screen's bottom edge, under the menu bar: drag it up first.
         if (answer.get("error") in ("covered", "not_visible")
-                and not answer.get("covered_by", "").startswith("EventWindow")
+                and not (answer.get("covered_by") or "").startswith("EventWindow")
                 and drag_window_up(game, path.split("/")[0])
                 and game.call(f"ui click {path}").get("ok")):
             continue
@@ -290,6 +292,15 @@ def choose_events(game):
             # the window is moveable, so drag it up by its title and try again.
             drag_window_up(game, event["path"])
             answer = game.call(command)
+        point = answer.get("point")
+        if (answer.get("error") == "covered" and point
+                and (answer.get("covered_by") or "").startswith(event["path"] + "/")):
+            # Tongs can take the event's own background for a cover; the option is still on
+            # top at its point, so click it there.
+            game.call(f"click {point['x']} {point['y']}")
+            time.sleep(1)
+            if not any(e.get("title") == event["title"] for e in game.call("event list").get("events") or []):
+                answer = {"ok": True}
         if answer.get("ok"):
             chosen.append(f"event {event.get('id')} option {option['number']}")
             time.sleep(0.5)
