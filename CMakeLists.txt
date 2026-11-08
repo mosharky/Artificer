@@ -15,3 +15,15 @@ FetchContent_MakeAvailable(anvil_sdk)
 # the DLL and lays out build/plugin/<id>/. Adds artificer-check and, with
 # -DEU4_DIR=<game folder>, artificer-deploy.
 anvil_add_plugin(artificer SOURCES src/plugin.cpp)
+
+# For the IDE: copy the plugin into the game after every build, so a build
+# (or F5) needs no separate artificer-deploy. Close the game first: Windows
+# does not let a loaded DLL be replaced. CMakeUserPresets.json turns it on.
+option(ARTIFICER_DEPLOY_ON_BUILD "Copy the plugin into EU4_DIR after every build" OFF)
+if(ARTIFICER_DEPLOY_ON_BUILD AND EU4_DIR)
+    add_custom_command(TARGET artificer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_BINARY_DIR}/plugin/artificer"
+                "${EU4_DIR}/anvil/plugins/artificer"
+        COMMENT "deploy artificer to ${EU4_DIR}/anvil/plugins/artificer"
+        VERBATIM)
+endif()
