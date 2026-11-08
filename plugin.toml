@@ -1,6 +1,6 @@
 id = "artificer"
 name = "Artificer"
-version = "0.0.0"         # release-please sets it in each release pull request
+version = "1.0.0"         # release-please sets it in each release pull request
 authors = ["mo_shark"]
 description = "Keeps EU4 fast in long sessions: deletes the message pop-ups the game keeps after you close them."
 api = 2
