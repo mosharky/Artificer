@@ -5,12 +5,14 @@
 // it lets go of it, but nothing deletes it, not even when another save is loaded.
 // The hidden windows stay in the GUI manager's widget registry and update list,
 // so every frame walks every pop-up closed since the game started
-// (docs/popup-leak.md). The message log keeps the controllers of its last entries
-// so they can be opened again; those are not marked finished.
+// (docs/popup-leak.md). The message log's entries hold controllers to show later.
+// Dismissing an entry marks its controller finished but keeps the pointer, so a
+// controller an entry holds is never deleted.
 //
 // The plugin notes each controller as it is constructed. Once one has been
-// finished, off the session's list of open pop-ups and with its window hidden
-// for a few checks in a row, it calls the controller's own deleting destructor:
+// finished, off the session's list of open pop-ups, held by no message log entry
+// and with its window hidden for a few checks in a row, it calls the controller's
+// own deleting destructor:
 // that releases the pop-up's 3D view, unregisters it from the game speed and
 // destroys the window, which the GUI manager's sweep frees in the next frame. A
 // controller left from an earlier session cannot run its destructor (it
@@ -38,7 +40,7 @@ using Addr = std::uintptr_t;
 
 constexpr std::uint64_t kFramesPerCheck = 30;  // about two checks a second
 constexpr int kClosedChecks = 3;               // checks in a row closed before the delete
-constexpr int kMaxOpenNodes = 10000;           // the open list holds a handful; bounds the walk
+constexpr int kMaxListNodes = 10000;           // the lists hold a few dozen; bounds the walks
 constexpr std::uint64_t kHeadBeforeTail = 8;   // the list is {head, tail, count}; not in symbols.toml
 
 template <class T> T At(Addr address) { return *reinterpret_cast<const T*>(address); }
@@ -47,9 +49,13 @@ template <class T> T At(Addr address) { return *reinterpret_cast<const T*>(addre
 struct Layout {
     Addr root = 0;  // global: the game root, 0 without a game
     Addr popup_vtable = 0;
+    Addr log_entry_vtable = 0;
     std::uint64_t session = sym::session_of_root.session;                     // root: the session
     std::uint64_t open_head = sym::popup_list_append.tail - kHeadBeforeTail;  // session: open pop-ups
     std::uint64_t node_next = sym::popup_list_append.node_next;               // node: {popup, prev, next}
+    std::uint64_t log_head = sym::message_log_append.head;                    // session: message log entries
+    std::uint64_t log_node_next = sym::message_log_append.node_next;          // node: {entry, next, prev}
+    std::uint64_t log_entry_popup = sym::message_log_dismiss.popup;           // entry: its controller, or 0
     std::uint64_t popup_session = sym::popup_base_destructor.session;         // controller: its session
     std::uint64_t popup_window = sym::popup_base_destructor.window;           // controller: its window's full object
     std::uint64_t popup_closed = sym::popup_close.closed;                     // controller: byte, finished
@@ -92,11 +98,18 @@ void Check() {
     const Addr session = root ? At<Addr>(root + l.session) : 0;
     if (session == 0) return;  // no game running: nothing is deleted from the menu
 
-    std::unordered_set<Addr> open;
+    // Controllers the game still points to: open pop-ups, and those log entries hold.
+    std::unordered_set<Addr> held;
     Addr node = At<Addr>(session + l.open_head);
-    for (int i = 0; node != 0 && i < kMaxOpenNodes; ++i) {
-        open.insert(At<Addr>(node));
+    for (int i = 0; node != 0 && i < kMaxListNodes; ++i) {
+        held.insert(At<Addr>(node));
         node = At<Addr>(node + l.node_next);
+    }
+    node = At<Addr>(session + l.log_head);
+    for (int i = 0; node != 0 && i < kMaxListNodes; ++i) {
+        const Addr entry = At<Addr>(node);
+        if (entry != 0 && At<Addr>(entry) == l.log_entry_vtable) held.insert(At<Addr>(entry + l.log_entry_popup));
+        node = At<Addr>(node + l.log_node_next);
     }
 
     std::vector<Addr> current, earlier;
@@ -105,7 +118,7 @@ void Check() {
         for (auto& [popup, closed] : g_popups) {
             const Addr window = At<Addr>(popup + l.popup_window);
             const Addr widget = window + l.widget_from_full;
-            if (At<std::uint8_t>(popup + l.popup_closed) == 0 || open.contains(popup) || window == 0 ||
+            if (At<std::uint8_t>(popup + l.popup_closed) == 0 || held.contains(popup) || window == 0 ||
                 At<std::uint8_t>(widget + l.visible) != 0 || At<std::uint8_t>(widget + l.dead) != 0) {
                 closed = 0;
                 continue;
@@ -142,6 +155,7 @@ void StartPopupCleanup(const anvil::Host& host) {
     const Addr base = host.game().image_base;
     g_layout.root = base + sym::root_and_date.root;
     g_layout.popup_vtable = base + sym::popup_destructor.vtable;
+    g_layout.log_entry_vtable = base + sym::message_log_entry.vtable;
     g_delete = host.function(sym::popup_delete);
 
     host.hook(g_destructor, sym::popup_destructor, OnPopupDestructor);

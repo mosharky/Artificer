@@ -22,9 +22,13 @@ Addresses are RVAs in the Steam `eu4.exe` for 1.37.5. The ones the plugin uses a
   (`mgr+0x110`) and update list (`mgr+0x170`). The per-frame passes (`0x14E9A70` and
   `0x14E9FA0`) walk all of them. Loading another save keeps them; only a restart
   frees them.
-- The message log keeps the controllers of its last entries (about 20) so they can
-  be opened again. Those controllers are not marked finished, and the log's entries
-  point to them.
+- The session's message log (`session+0x4C0`) has entries of 0x1D8 bytes (vtable
+  `0x1D6B528`). Each entry holds a controller to show later, at `entry+0x130`:
+  - showing it (`0x123FFB0`) hands the controller to the open list and clears the
+    pointer;
+  - dismissing it (`0x1240020`) marks the controller finished through its slot 0x58
+    but keeps the pointer.
+  The entry's destructor does not delete the controller either.
 
 ## Measured before the fix
 
@@ -49,6 +53,7 @@ The tools that produced these figures are in `tools/perf`: `session_log.py`,
    with its own deleting destructor once, for three checks in a row, it is:
    - finished,
    - not on the session's open list,
+   - held by no message log entry,
    - and its window is hidden.
 
    The destructor releases the pop-up's 3D view, takes the controller off the
