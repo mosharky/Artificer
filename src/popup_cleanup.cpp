@@ -163,7 +163,13 @@ void StartPopupCleanup(const anvil::Host& host) {
     host.subscribe(ANVIL_GAME_EVENT_FRAME, [](const void* payload) {
         const auto* frame = static_cast<const AnvilGameFrame*>(payload);
         if (frame == nullptr || frame->size < offsetof(AnvilGameFrame, number) + sizeof frame->number) return;
-        if (frame->number % kFramesPerCheck == 0) Check();
+        // The game's counter also counts frames drawn inside a game update, which
+        // Anvil does not report, so the numbers seen here can jump: count from
+        // the last check instead of waiting for a multiple. Main thread only.
+        static std::uint64_t last_check = 0;
+        if (frame->number - last_check < kFramesPerCheck && frame->number >= last_check) return;
+        last_check = frame->number;
+        Check();
     });
 }
 
