@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/mosharky/Artificer/compare/v1.0.0...v1.0.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* build against Anvil 1.27 and stop skipping pop-up checks ([#6](https://github.com/mosharky/Artificer/issues/6)) ([fc2cba5](https://github.com/mosharky/Artificer/commit/fc2cba5298054cb044f9736ed9c43e7bb2d67433))
+
 ## 1.0.0 (2026-11-08)
 
 
